@@ -40,19 +40,41 @@ namespace TP.Greenfab
             {
                 UnityEditorInternal.ComponentUtility.MoveComponentUp(prefabLink.GetComponent<Component>());
 
+
                 //Stops unity from breaking prefab reference when adding prefab to scene.
-                if (prefabLink.prefab && !prefabLink.prefab.IsPrefab() && prefabLink.prefab == prefabLink.gameObject)
+                if (prefabLink.Prefab && !prefabLink.Prefab.IsPrefab() && prefabLink.Prefab == prefabLink.gameObject)
                 {
                     GameObject prefab = PrefabUtility.GetPrefabParent(prefabLink.gameObject) as GameObject;
                     PrefabUtility.DisconnectPrefabInstance(prefabLink.gameObject);
 
-                    prefabLink.prefab = prefab;
+                    prefabLink.Prefab = prefab;
                 }
 
                 //When adding prefab link to a prefab automatically add reference to self.
-                if (!prefabLink.prefab && prefabLink.gameObject.IsPrefab())
+                if (!prefabLink.Prefab && prefabLink.gameObject.IsPrefab())
                 {
-                    prefabLink.prefab = prefabLink.gameObject;
+                    prefabLink.Prefab = prefabLink.gameObject;
+                }
+
+                //When prefab dragged from sceen fix broken prefab link references
+                if (prefabLink.Prefab && prefabLink.gameObject.IsPrefab())
+                {
+                    //This is slow
+                    PrefabLink[] allPrefabLinksInScene = FindObjectsOfType<PrefabLink>();
+                    foreach (PrefabLink prefabLinkInSceen in allPrefabLinksInScene)
+                    {
+                        Object prefabParent = PrefabUtility.GetPrefabParent(prefabLinkInSceen);
+
+                        if (prefabParent != null)
+                        {
+                            bool prefabLinkIsPrefabInstance = prefabParent.GetInstanceID() == prefabLink.GetInstanceID();
+
+                            if (prefabLinkIsPrefabInstance)
+                            {
+                                prefabLinkInSceen.Prefab = prefabLink.Prefab;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -76,23 +98,59 @@ namespace TP.Greenfab
             
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Target", GUILayout.Width(40));
-            firstPrefabLink.prefab = EditorGUILayout.ObjectField(firstPrefabLink.prefab, typeof(GameObject), GUILayout.ExpandWidth(true)) as GameObject;
+            firstPrefabLink.Prefab = EditorGUILayout.ObjectField(firstPrefabLink.Prefab, typeof(GameObject), GUILayout.ExpandWidth(true)) as GameObject;
+            if (firstPrefabLink.Prefab == null)
+            {
+                string createPrefabButtonText = "Create Prefab";
+
+                if (buttonWidth < 90)
+                {
+                    createPrefabButtonText = "Create";
+                }
+
+                if (GUILayout.Button(createPrefabButtonText, GUILayout.Width(buttonWidth)))
+                {
+                    var absolutePath = EditorUtility.SaveFilePanel(
+                        "Save new Prefab Target",
+                        "",
+                        firstPrefabLink.name + ".prefab",
+                        "prefab");
+                    
+                    if (absolutePath.Length > 0)
+                    {
+                        string relativePath = "Assets" + absolutePath.Substring(Application.dataPath.Length);
+                        firstPrefabLink.Prefab = PrefabUtility.CreatePrefab(relativePath, firstPrefabLink.gameObject);
+                        triggerApply = true;
+                        EditorApplication.update += Update;
+                    }
+
+                }
+            }
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.BeginHorizontal();
             bool prefabFileSelected = false;
 
             bool canRevert = true;
+            bool canRevertAll = true;
 
-            foreach (PrefabLink prefabLink in prefabLinks)
+            if (firstPrefabLink.Prefab == null)
             {
-                if (prefabLink.gameObject.IsPrefab())
+                canRevert = false;
+                canRevertAll = false;
+            }
+            else
+            {
+                foreach (PrefabLink prefabLink in prefabLinks)
                 {
-                    prefabFileSelected = true;
-                }
+                    if (prefabLink.gameObject.IsPrefab())
+                    {
+                        prefabFileSelected = true;
+                    }
 
-                if (prefabLink.prefab.GetInstanceID() == prefabLink.gameObject.GetInstanceID())
-                {
-                    canRevert = false;
+                    if (prefabLink.Prefab.GetInstanceID() == prefabLink.gameObject.GetInstanceID())
+                    {
+                        canRevert = false;
+                    }
                 }
             }
 
@@ -104,7 +162,7 @@ namespace TP.Greenfab
                 EditorApplication.update += Update;
             }
             
-            GUI.enabled = true;
+            GUI.enabled = canRevertAll;
 
             if (GUILayout.Button("Revert All", GUILayout.Width(buttonWidth)))
             {
@@ -195,8 +253,8 @@ namespace TP.Greenfab
                     //{
                     //    Undo.RegisterFullObjectHierarchyUndo(prefabLink.prefab, "Prefab Link - Prefab");
                     //}
-                    GameObject newPrefab = PrefabUtility.ReplacePrefab(prefabLink.gameObject, prefabLink.prefab);
-                    prefabLink.prefab = newPrefab;
+                    GameObject newPrefab = PrefabUtility.ReplacePrefab(prefabLink.gameObject, prefabLink.Prefab);
+                    prefabLink.Prefab = newPrefab;
                     //EditorUtility.SetDirty(prefabLink.prefab); 
                 }
             }

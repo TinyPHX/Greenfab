@@ -15,7 +15,7 @@ namespace TP.Greenfab
     [Serializable]
     public class PrefabLink : MonoBehaviour
     {
-        public GameObject prefab;
+        [SerializeField] private GameObject prefab;
 
         private List<Component> componentsToAdd;
         private List<Component> componentsToRemove;
@@ -26,7 +26,7 @@ namespace TP.Greenfab
         {
             revertSuccessful = false;
 
-            if (prefab != gameObject && prefab != null)
+            if (Prefab != gameObject && Prefab != null)
             {
                 RemoveComponentsAndChildren();
                 CopyComponentsAndChildren(ignoreTopTransform);
@@ -112,9 +112,9 @@ namespace TP.Greenfab
 
         public void CopyComponentsAndChildren(bool ignoreTransform)
         {
-            if (prefab != null)
+            if (Prefab != null)
             {
-                componentsToAdd = prefab.GetComponents<Component>().ToList();
+                componentsToAdd = Prefab.GetComponents<Component>().ToList();
 
                 //Copy prefab components
                 while (componentsToAdd.Count > 0)
@@ -123,7 +123,7 @@ namespace TP.Greenfab
                 }
 
                 //Copy prefab children
-                foreach (Transform child in prefab.transform)
+                foreach (Transform child in Prefab.transform)
                 {
                     Transform newChild = Instantiate(child, transform, false);
                     newChild.name = child.name;
@@ -133,7 +133,7 @@ namespace TP.Greenfab
                     #endif
                 }
 
-                gameObject.name = prefab.name;
+                gameObject.name = Prefab.name;
             }
         }
 
@@ -172,9 +172,14 @@ namespace TP.Greenfab
             }
         }
 
-        private Component CopyComponent(Component component)
+        private Component CopyComponent(Component component, GameObject copyTo = null)
         {
-            return gameObject.CopyComponent(component);
+            if (copyTo == null)
+            {
+                copyTo = gameObject;
+            }
+
+            return copyTo.CopyComponent(component);
         }
 
         private List<PrefabLink> DirectChildPrefabLinks(GameObject gameObject)
@@ -197,6 +202,19 @@ namespace TP.Greenfab
             }
 
             return directChildPrefabLinks;
+        }
+
+        public GameObject Prefab
+        {
+            get
+            {
+                return prefab;
+            }
+
+            set
+            {
+                prefab = value;
+            }
         }
     }
 }
