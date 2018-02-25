@@ -10,3 +10,14 @@ Greenfab is a prefab alternative for Unity
 * Works with Unity Prefabs - Doesn't impede the usage of regular unity prefab functionality.
 
 https://forum.unity.com/threads/wip-prefabulous-better-prefabs.517747/
+
+#Setup
+
+##Latest
+To get the latest release you can 
+
+1. Clone this repo
+2. Clone [Extension Methods](https://github.com/TinyPhoenix/Extension-Methods) dependancy
+
+##Stable
+To get the latest stable release you can [download the Unity Package](http://tinyphx.com/development-tool/greenfab) from our website.
