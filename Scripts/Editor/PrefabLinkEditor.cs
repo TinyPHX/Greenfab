@@ -95,6 +95,7 @@ namespace TP.Greenfab
             
             prefabLinks = Array.ConvertAll(targets, item => (PrefabLink)item).ToList();
             PrefabLink firstPrefabLink = prefabLinks[0];
+            int prefabLinksSelected = prefabLinks.Count;
             
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Target", GUILayout.Width(40));
@@ -103,6 +104,11 @@ namespace TP.Greenfab
             {
                 string createPrefabButtonText = "Create Prefab";
 
+                if (prefabLinksSelected > 1)
+                {
+                    createPrefabButtonText = "Create Prefabs (" + prefabLinksSelected + ")";
+                }
+
                 if (buttonWidth < 90)
                 {
                     createPrefabButtonText = "Create";
@@ -110,18 +116,94 @@ namespace TP.Greenfab
 
                 if (GUILayout.Button(createPrefabButtonText, GUILayout.Width(buttonWidth)))
                 {
-                    var absolutePath = EditorUtility.SaveFilePanel(
-                        "Save new Prefab Target",
-                        "",
-                        firstPrefabLink.name + ".prefab",
-                        "prefab");
-                    
-                    if (absolutePath.Length > 0)
+                    int multiPrefabDialogueResult = -1;
+                    if (prefabLinksSelected > 1)
                     {
-                        string relativePath = "Assets" + absolutePath.Substring(Application.dataPath.Length);
-                        firstPrefabLink.Prefab = PrefabUtility.CreatePrefab(relativePath, firstPrefabLink.gameObject);
-                        triggerApply = true;
-                        EditorApplication.update += Update;
+                         multiPrefabDialogueResult = EditorUtility.DisplayDialogComplex("You've got multiple PrefabsLinks selected",
+                            "We are about to try to create " + prefabLinksSelected + " prefabs. How would you like to continue?",
+                            "Skip Propts", //0
+                            "Show All Propts", //1
+                            "Cancel"); //2 Close with x is also results in a 2.
+
+                        if (multiPrefabDialogueResult != 2)
+                        {
+                            string absoluteDirectoryPath = EditorUtility.OpenFolderPanel("Select Prefab Folder", "", "");
+                            bool processCanceled = false; 
+                            int prefabsCreated = 0;
+
+                            foreach(PrefabLink selectedPrefabLink in prefabLinks)
+                            {
+                                string saveAttemptAppend = "";
+                                int fileSaveAttempts = 0;
+                                bool saved = false;
+                                string prefabName = "";
+                                string prefabPath = "";
+
+                                while (!saved)
+                                {
+                                    prefabName = selectedPrefabLink.name + saveAttemptAppend + ".prefab";
+                                    prefabPath = AbsolutePathToRelative(absoluteDirectoryPath) + "/" + prefabName;
+
+                                    if (!File.Exists(prefabPath))
+                                    {
+                                        saved = true;
+                                    }
+                                    else
+                                    {
+                                        fileSaveAttempts++;
+                                        saveAttemptAppend = " (" + fileSaveAttempts + ")";
+                                    }
+                                }
+
+                                if (multiPrefabDialogueResult == 1)
+                                {
+                                    string absolutePath = EditorUtility.SaveFilePanel(
+                                        "Save new Prefab Target",
+                                        absoluteDirectoryPath,
+                                        prefabName,
+                                        "prefab");
+
+                                    if (absolutePath.Length > 0)
+                                    {
+                                        prefabPath = AbsolutePathToRelative(absolutePath);
+                                    }
+                                    else
+                                    {
+                                        processCanceled = true;
+
+                                        EditorUtility.DisplayDialog(
+                                            "Process Aborted",
+                                            "Process Aborted after creating " + prefabsCreated + " of " + prefabLinksSelected + " prefabs",
+                                            "Ok");
+
+                                        break;
+                                    }
+                                }
+
+                                if (!processCanceled)
+                                {
+                                    selectedPrefabLink.Prefab = PrefabUtility.CreatePrefab(prefabPath, selectedPrefabLink.gameObject);
+                                    TriggerApply();
+                                    prefabsCreated++;
+                                }
+                                else
+                                {
+                                    break;
+                                }
+                            }
+                        }
+                    } else  {
+                        string absolutePath = EditorUtility.SaveFilePanel(
+                            "Save new Prefab Target",
+                            "",
+                            firstPrefabLink.name + ".prefab",
+                            "prefab");
+
+                        if (absolutePath.Length > 0)
+                        {
+                            firstPrefabLink.Prefab = PrefabUtility.CreatePrefab(AbsolutePathToRelative(absolutePath), firstPrefabLink.gameObject);
+                            TriggerApply();
+                        }
                     }
 
                 }
@@ -158,24 +240,21 @@ namespace TP.Greenfab
             
             if (GUILayout.Button("Revert", GUILayout.Width(buttonWidth)))
             {
-                triggerRevert = true;
-                EditorApplication.update += Update;
+                TriggerRevert();
             }
             
             GUI.enabled = canRevertAll;
 
             if (GUILayout.Button("Revert All", GUILayout.Width(buttonWidth)))
             {
-                triggerRevertHierarchy = true;
-                EditorApplication.update += Update;
+                TriggerRevertHierarchy();
             }
             
             GUI.enabled = canRevert;
 
             if (GUILayout.Button("Apply", GUILayout.Width(buttonWidth)))
             {
-                triggerApply = true;
-                EditorApplication.update += Update;
+                TriggerApply();
             }
 
             EditorGUILayout.EndHorizontal();
@@ -217,6 +296,24 @@ namespace TP.Greenfab
 
         }
 
+        private void TriggerRevert()
+        {
+            triggerRevert = true;
+            EditorApplication.update += Update;
+        }
+
+        private void TriggerRevertHierarchy()
+        {
+            triggerRevertHierarchy = true;
+            EditorApplication.update += Update;
+        }
+
+        private void TriggerApply()
+        {
+            triggerApply = true;
+            EditorApplication.update += Update;
+        }
+
         private void Update()
         {
             EditorApplication.update -= Update;
@@ -253,8 +350,11 @@ namespace TP.Greenfab
                     //{
                     //    Undo.RegisterFullObjectHierarchyUndo(prefabLink.prefab, "Prefab Link - Prefab");
                     //}
-                    GameObject newPrefab = PrefabUtility.ReplacePrefab(prefabLink.gameObject, prefabLink.Prefab);
-                    prefabLink.Prefab = newPrefab;
+                    if (prefabLink.Prefab != null)
+                    {
+                        GameObject newPrefab = PrefabUtility.ReplacePrefab(prefabLink.gameObject, prefabLink.Prefab);
+                        prefabLink.Prefab = newPrefab;
+                    }
                     //EditorUtility.SetDirty(prefabLink.prefab); 
                 }
             }
@@ -313,6 +413,13 @@ namespace TP.Greenfab
                     }
                 }
             }
+        }
+
+        private string AbsolutePathToRelative(string absolutePath)
+        {
+            string relativePath = "Assets" + absolutePath.Substring(Application.dataPath.Length);
+
+            return relativePath;
         }
     }
 }
