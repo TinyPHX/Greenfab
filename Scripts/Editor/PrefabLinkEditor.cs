@@ -19,28 +19,117 @@ namespace TP.Greenfab
         [SerializeField] public bool triggerRevert = false;
         [SerializeField] public bool triggerRevertHierarchy = false;
         [SerializeField] public bool triggerApply = false;
+        [SerializeField, HideInInspector] private static Dictionary<int, List<int>> prefabInstances = new Dictionary<int, List<int>>();
+        [SerializeField, HideInInspector] private static GameObject lastSelectedGameObject;
+        [SerializeField, HideInInspector] private static GameObject lastSelectedPrefab;
 
         public Texture2D prefabLinkIcon;
 
         static PrefabLinkEditor()
         {
             EditorApplication.hierarchyWindowItemOnGUI += HandleHierarchyWindowItemOnGUI;
+            EditorApplication.hierarchyWindowChanged += HierarchyWindowChanged;
+            EditorApplication.projectWindowChanged += ProjectWindowChanged;
+            Selection.selectionChanged += OnSelectionChange;
         }
 
         private void OnEnable()
         {
             MovePrefabLinksToTop();
+
+            Debug.Log("OnEnable");
+        }
+
+        public static void OnSelectionChange()
+        {
+            GameObject selected = Selection.activeGameObject;
+
+            if (selected != null)
+            {
+                if (selected.IsPrefab())
+                {
+                    lastSelectedPrefab = selected;
+                    UpdateNewlyCreatedPrefabs();
+                }
+                else
+                {
+                    lastSelectedGameObject = selected;
+                }
+            }
+        }
+
+        private static void UpdateNewlyCreatedPrefabs()
+        {
+            //Check if new prefab created and update possible instance to connect PrefabLink target
+            if (lastSelectedPrefab != null && lastSelectedGameObject != null)
+            {
+                PrefabLink prefabParent = lastSelectedPrefab.GetComponent<PrefabLink>();
+                PrefabLink prefabInstance = lastSelectedGameObject.GetComponent<PrefabLink>();
+
+                if (prefabParent != null && prefabInstance != null && prefabInstance.Prefab == null)
+                {
+                    bool match = PrefabUtility.GetPrefabParent(prefabInstance).GetInstanceID() == prefabParent.GetInstanceID();
+
+                    if (match)
+                    {
+                        prefabInstance.Prefab = prefabParent.gameObject;
+                    }
+                }
+            }
+        }
+
+        private static void HierarchyWindowChanged()
+        {
+            BuildPrefabInstances();
+        }
+
+        private static void ProjectWindowChanged()
+        {
+            BuildPrefabInstances();
+        }
+
+        static void BuildPrefabInstances()
+        {
+            PrefabLink[] allPrefabLinksInScene = FindObjectsOfType<PrefabLink>();
+            foreach (PrefabLink prefabLinkInSceen in allPrefabLinksInScene)
+            {
+                UpdatePrefabInstance(prefabLinkInSceen);
+            }
+        }
+
+        static void UpdatePrefabInstance(PrefabLink prefabLinkInSceen)
+        {
+            Object prefabParent = PrefabUtility.GetPrefabParent(prefabLinkInSceen);
+
+            if (prefabParent != null)
+            {
+                int prefabParentId = prefabParent.GetInstanceID();
+                int prefabInstanceId = prefabLinkInSceen.GetInstanceID();
+                List<int> instances = new List<int> { };
+
+                if (prefabInstances.ContainsKey(prefabParentId))
+                {
+                    instances = prefabInstances[prefabParentId];
+                }
+
+                instances.AddUnique(prefabInstanceId);
+                prefabInstances[prefabParentId] = instances;
+            }
         }
 
         void Reset()
         {
+            if (prefabInstances.Count == 0)
+            {
+                BuildPrefabInstances();
+            }
+
             PrefabLink[] prefabLinksTemp = Array.ConvertAll(targets, item => (PrefabLink)item);
 
             foreach (PrefabLink prefabLink in prefabLinksTemp)
             {
                 UnityEditorInternal.ComponentUtility.MoveComponentUp(prefabLink.GetComponent<Component>());
-
-
+                
                 //Stops unity from breaking prefab reference when adding prefab to scene.
                 if (prefabLink.Prefab && !prefabLink.Prefab.IsPrefab() && prefabLink.Prefab == prefabLink.gameObject)
                 {
@@ -54,27 +143,6 @@ namespace TP.Greenfab
                 if (!prefabLink.Prefab && prefabLink.gameObject.IsPrefab())
                 {
                     prefabLink.Prefab = prefabLink.gameObject;
-                }
-
-                //When prefab dragged from sceen fix broken prefab link references
-                if (prefabLink.Prefab && prefabLink.gameObject.IsPrefab())
-                {
-                    //This is slow
-                    PrefabLink[] allPrefabLinksInScene = FindObjectsOfType<PrefabLink>();
-                    foreach (PrefabLink prefabLinkInSceen in allPrefabLinksInScene)
-                    {
-                        Object prefabParent = PrefabUtility.GetPrefabParent(prefabLinkInSceen);
-
-                        if (prefabParent != null)
-                        {
-                            bool prefabLinkIsPrefabInstance = prefabParent.GetInstanceID() == prefabLink.GetInstanceID();
-
-                            if (prefabLinkIsPrefabInstance)
-                            {
-                                prefabLinkInSceen.Prefab = prefabLink.Prefab;
-                            }
-                        }
-                    }
                 }
             }
         }
