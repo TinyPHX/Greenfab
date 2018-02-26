@@ -36,8 +36,6 @@ namespace TP.Greenfab
         private void OnEnable()
         {
             MovePrefabLinksToTop();
-
-            Debug.Log("OnEnable");
         }
 
         public static void OnSelectionChange()
