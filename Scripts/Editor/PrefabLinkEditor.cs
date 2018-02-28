@@ -66,7 +66,8 @@ namespace TP.Greenfab
 
                 if (prefabParent != null && prefabInstance != null && prefabInstance.Prefab == null)
                 {
-                    bool match = PrefabUtility.GetPrefabParent(prefabInstance).GetInstanceID() == prefabParent.GetInstanceID();
+                    Object foundParrent = PrefabUtility.GetPrefabParent(prefabInstance);
+                    bool match = foundParrent != null && foundParrent.GetInstanceID() == prefabParent.GetInstanceID();
 
                     if (match)
                     {
@@ -165,7 +166,18 @@ namespace TP.Greenfab
             
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Target", GUILayout.Width(40));
+
+            EditorGUI.BeginChangeCheck();
             firstPrefabLink.Prefab = EditorGUILayout.ObjectField(firstPrefabLink.Prefab, typeof(GameObject), GUILayout.ExpandWidth(true)) as GameObject;
+            if (EditorGUI.EndChangeCheck())
+            {
+                foreach (PrefabLink prefabLink in prefabLinks)
+                {
+                    prefabLink.Prefab = firstPrefabLink.Prefab;
+                }
+            }
+
+
             if (firstPrefabLink.Prefab == null)
             {
                 string createPrefabButtonText = "Create Prefab";
