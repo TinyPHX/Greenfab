@@ -480,7 +480,10 @@ namespace TP.Greenfab
                     EditorGUILayout.TextArea("parentDepth: " + FirstPrefabLink.transform.ParentDepth());
                     EditorGUILayout.TextArea("PrefabLink ID: " + FirstPrefabLink.GetInstanceID());
                     EditorGUILayout.TextArea("PrefabLink.gameObject ID: " + FirstPrefabLink.gameObject.GetInstanceID());
-                    EditorGUILayout.TextArea("PrefabLink.target ID: " + FirstPrefabLink.target.GetInstanceID());
+                    if (FirstPrefabLink.target != null)
+                    {
+                        EditorGUILayout.TextArea("PrefabLink.target ID: " + FirstPrefabLink.target.GetInstanceID());
+                    }
                 }
                 EditorGUI.indentLevel--;
             }
