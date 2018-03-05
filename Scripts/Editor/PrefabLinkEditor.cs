@@ -449,16 +449,16 @@ namespace TP.Greenfab
             if (PrefabLink.advancedOptions)
             {
                 PrefabLink.ChangeNames = EditorGUILayout.Toggle("Change Names", PrefabLink.ChangeNames);
-                PrefabLink.useUnityEditorRevert = EditorGUILayout.Toggle("Use UnityEditor Revert", PrefabLink.useUnityEditorRevert);
-                PrefabLink.useUnityEditorApply = EditorGUILayout.Toggle("Use UnityEditor Apply", PrefabLink.useUnityEditorApply);
+                PrefabLink.useUnityEditorRevert = EditorGUILayout.Toggle("Use Unity Revert", PrefabLink.useUnityEditorRevert);
+                PrefabLink.useUnityEditorApply = EditorGUILayout.Toggle("Use Unity Apply", PrefabLink.useUnityEditorApply);
                 ExtensionMethods.ExtensionMethods.masterVerbose = EditorGUILayout.Toggle("Verbose", ExtensionMethods.ExtensionMethods.masterVerbose);
                 GUI.enabled = false;
                 EditorGUILayout.Toggle("Is Dirty", firstPrefabLink.Dirty);
                 GUI.enabled = true;
-                PrefabLink.dirtyChecksPerSecond = EditorGUILayout.Slider("Dirty Checks Per Second", PrefabLink.dirtyChecksPerSecond, 0, 10);
+                PrefabLink.dirtyChecksPerSecond = EditorGUILayout.Slider("Dirty Checks/Sec", PrefabLink.dirtyChecksPerSecond, 0, 10);
                 if (PrefabLink.dirtyChecksPerSecond == 0)
                 {
-                    if (GUILayout.Button("Update Dirty", GUILayout.Width(buttonWidth)))
+                    if (GUILayout.Button(smallButtons ? "Check" : "Check Dirty", GUILayout.Width(buttonWidth)))
                     {
                         foreach (PrefabLink prefabLink in PrefabLinks)
                         {

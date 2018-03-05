@@ -242,7 +242,10 @@ namespace TP.Greenfab
                     #endif
                 }
 
-                //gameObject.name = target.name;
+                if (ExtensionMethods.ExtensionMethods.includeNames)
+                {
+                    gameObject.name = target.name;
+                }
             }
         }
 
