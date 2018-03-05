@@ -12,40 +12,142 @@ using UnityEditor;
 
 namespace TP.Greenfab
 {
+
     [Serializable]
     public class PrefabLink : MonoBehaviour
     {
-        [SerializeField] private GameObject prefab;
+        public GameObject target;
 
         private List<Component> componentsToAdd;
         private List<Component> componentsToRemove;
-        [HideInInspector] public float startTime;
-        [HideInInspector] public bool revertSuccessful;
+        private bool revertSuccessful;
+        private bool dirty;
 
-        public bool Revert(bool revertChildren, bool ignoreTopTransform)
+        //Used by editor
+        private float revertStartTime;
+        public float updateDirtyStartTime;
+        public static float dirtyChecksPerSecond = 1;
+        public static bool ChangeNames
         {
-            revertSuccessful = false;
+            set { ExtensionMethods.ExtensionMethods.includeNames = value; }
+            get { return ExtensionMethods.ExtensionMethods.includeNames; }
+        }
+        public static bool useUnityEditorApply = false;
+        public static bool useUnityEditorRevert = false;
+        public static bool advancedOptions = false;
+        public static bool prefabOnlyOptions = false;
+        public static bool debugInfo = false;
+        public static bool propogateChanges = false;
 
-            if (Prefab != gameObject && Prefab != null)
+        public override bool Equals(object other)
+        {
+            bool equals = false;
+
+            if (base.Equals(other))
             {
-                RemoveComponentsAndChildren();
-                CopyComponentsAndChildren(ignoreTopTransform);
+                equals = true;
+            }
+            else if (other is PrefabLink)
+            {
+                PrefabLink otherPrefabLink = other as PrefabLink;
+
+                equals = target == otherPrefabLink.target;
+            }
+
+            return equals;
+        }
+
+        public void UpdateDirty()
+        {
+            Dirty = false;
+
+            if (gameObject != null && target != null)
+            {
+                Dirty = !gameObject.ValueEquals(target);
+            }
+        }
+
+        public bool Revert(bool revertChildren=true, bool ignoreTopTransform=true, bool ignorePrefabLink=true)
+        {
+            return CopyFrom(false, revertChildren, ignoreTopTransform, true);
+        }
+
+        public bool Apply(bool applyChildren=true, bool ignoreTopTransform=true, bool ignorePrefabLink=true)
+        {
+            PrefabLink targetPrefabLink = target.GetComponent<PrefabLink>();
+            if (targetPrefabLink == null)
+            {
+                targetPrefabLink = target.AddComponent<PrefabLink>();
+            }
+            targetPrefabLink.target = gameObject;
+
+            bool revertSuccessful = targetPrefabLink.CopyFrom(applyChildren, false, ignoreTopTransform, true);
+            
+            targetPrefabLink.target = target;
+
+            return revertSuccessful;
+        }
+
+        public bool CopyFrom(bool applyChildren=false, bool revertChildren=true, bool ignoreTopTransform=true, bool ignorePrefabLink=true)
+        {
+            return CopyFrom(target, applyChildren, revertChildren, ignoreTopTransform, true);
+        }
+
+        public bool CopyFrom(GameObject from, bool applyChildren=false, bool revertChildren=true, bool ignoreTopTransform=true, bool ignorePrefabLink=true)
+        {
+            RevertSuccessful = false;
+
+            if (from != gameObject && from != null)
+            {
+                if (applyChildren)
+                {
+                    foreach (PrefabLink directChildprefabLink in DirectChildPrefabLinks(gameObject))
+                    {
+                        directChildprefabLink.Apply(revertChildren, false, ignorePrefabLink);
+                    }
+                }
+
+                RemoveComponentsAndChildren(ignoreTopTransform, ignorePrefabLink);
+                CopyComponentsAndChildren(ignoreTopTransform, ignorePrefabLink);
 
                 if (revertChildren)
                 {
                     foreach (PrefabLink directChildprefabLink in DirectChildPrefabLinks(gameObject))
                     {
-                        directChildprefabLink.Revert(revertChildren, false);
+                        directChildprefabLink.Revert(revertChildren, false, ignorePrefabLink);
                     }
                 }
             }
 
-            revertSuccessful = true;
+            RevertSuccessful = true;
 
-            return revertSuccessful;
+            return RevertSuccessful;
         }
 
-        public void RemoveComponentsAndChildren()
+        public bool Revert(GameObject from, bool revertChildren=true, bool ignoreTopTransform=true, bool ignorePrefabLink=true)
+        {
+            RevertSuccessful = false;
+
+            if (from != gameObject && from != null)
+            {
+                RemoveComponentsAndChildren(ignoreTopTransform, ignorePrefabLink);
+                CopyComponentsAndChildren(ignoreTopTransform, ignorePrefabLink);
+
+                if (revertChildren)
+                {
+                    foreach (PrefabLink directChildprefabLink in DirectChildPrefabLinks(gameObject))
+                    {
+                        directChildprefabLink.Revert(revertChildren, false, ignorePrefabLink);
+                    }
+                }
+            }
+
+            RevertSuccessful = true;
+
+            return RevertSuccessful;
+        }
+
+        public void RemoveComponentsAndChildren(bool ignoreTopTransform=true, bool ignorePrefabLink=true)
         {
             //Remove children
             for (int i = transform.childCount - 1; i >= 0; i--)
@@ -58,7 +160,17 @@ namespace TP.Greenfab
 
             while (componentsToRemove.Count > 0)
             {
-                RemoveComponentAndRequiredComponents(componentsToRemove[0]);
+                Component component = componentsToRemove[0];
+
+                if (ignoreTopTransform && component.GetType() == typeof(Transform) ||
+                    ignorePrefabLink && component.GetType() == typeof(PrefabLink))
+                {
+                    componentsToRemove.Remove(component);
+                }
+                else
+                {
+                    RemoveComponentAndRequiredComponents(component);
+                }
             }
         }
 
@@ -67,18 +179,15 @@ namespace TP.Greenfab
             //TODO check for cicular dependancies
 
             componentsToRemove.Remove(component);
+            
+            List<Component> requiredByComponents = component.RequiredByComponents(component.gameObject.GetComponents<Component>().ToList());
 
-            if (component != this && component != transform)
+            foreach (Component requiredByComponent in requiredByComponents)
             {
-                List<Component> requiredByComponents = component.RequiredByComponents(component.gameObject.GetComponents<Component>().ToList());
-
-                foreach (Component requiredByComponent in requiredByComponents)
-                {
-                    RemoveComponentAndRequiredComponents(requiredByComponent);
-                }
-
-                RemoveComponent(component);
+                RemoveComponentAndRequiredComponents(requiredByComponent);
             }
+
+            RemoveComponent(component);
         }
 
         private void RemoveGameObject(GameObject gameObject)
@@ -110,20 +219,20 @@ namespace TP.Greenfab
             }
         }
 
-        public void CopyComponentsAndChildren(bool ignoreTransform)
+        public void CopyComponentsAndChildren(bool ignoreTransform=true, bool ignorePrefabLink=true)
         {
-            if (Prefab != null)
+            if (target != null)
             {
-                componentsToAdd = Prefab.GetComponents<Component>().ToList();
+                componentsToAdd = target.GetComponents<Component>().ToList();
 
                 //Copy prefab components
                 while (componentsToAdd.Count > 0)
                 {
-                    CopyComponentAndRequiredComponents(componentsToAdd[0], ignoreTransform);
+                    CopyComponentAndRequiredComponents(componentsToAdd[0], ignoreTransform, ignorePrefabLink);
                 }
 
                 //Copy prefab children
-                foreach (Transform child in Prefab.transform)
+                foreach (Transform child in target.transform)
                 {
                     Transform newChild = Instantiate(child, transform, false);
                     newChild.name = child.name;
@@ -133,11 +242,11 @@ namespace TP.Greenfab
                     #endif
                 }
 
-                gameObject.name = Prefab.name;
+                //gameObject.name = target.name;
             }
         }
 
-        public void CopyComponentAndRequiredComponents(Component component, bool ignoreTransform)
+        public void CopyComponentAndRequiredComponents(Component component, bool ignoreTransform=true, bool ignorePrefabLink=true)
         {
             //TODO check for cicular dependancies
 
@@ -145,12 +254,13 @@ namespace TP.Greenfab
 
             bool ignore = false;
 
-            if (component.GetType() == typeof(Transform) /*&& ignoreTransform*/)
+            if ( /*ignoreTransform &&*/ component.GetType() == typeof(Transform) || 
+                ignorePrefabLink && component.GetType() == typeof(PrefabLink))
             {
                 ignore = true;
             }
 
-            if (component.GetType() == typeof(PrefabLink))
+            if (ignorePrefabLink && component.GetType() == typeof(PrefabLink))
             {
                 ignore = true;
             }
@@ -204,16 +314,42 @@ namespace TP.Greenfab
             return directChildPrefabLinks;
         }
 
-        public GameObject Prefab
+        public float StartTime
         {
             get
             {
-                return prefab;
+                return revertStartTime;
             }
 
             set
             {
-                prefab = value;
+                revertStartTime = value;
+            }
+        }
+
+        public bool RevertSuccessful
+        {
+            get
+            {
+                return revertSuccessful;
+            }
+
+            set
+            {
+                revertSuccessful = value;
+            }
+        }
+
+        public bool Dirty
+        {
+            get
+            {
+                return dirty;
+            }
+
+            set
+            {
+                dirty = value;
             }
         }
     }
