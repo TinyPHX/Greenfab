@@ -29,7 +29,17 @@ namespace TP.Greenfab
 
         [SerializeField, HideInInspector] private static bool projectWindowChangedHandled;
         [SerializeField, HideInInspector] private static float projectWindowChangedTime;
-
+        
+        //Editor colors
+        public static Color editorGray = new Color32(194, 194, 194, 255);
+        public static Color selectedBackgroundBlue = new Color(.24f, .48f, .90f);
+        public static Color textEditorBlack = new Color32(0, 0, 0, 255);
+        public static Color textNormalDefault = new Color32(0, 125, 0, 255);
+        public static Color textNormalSelected = new Color32(100, 200, 100, 255);
+        public static Color textNormalDisabled = new Color32(100, 150, 100, 255);
+        public static Color textNoTargetDefault = new Color32(100, 100, 100, 255);
+        public static Color textNoTargetSelected = new Color32(175, 175, 175, 255);
+        public static Color textNoTargetDisabled = new Color32(125, 125, 125, 255);
 
         public Texture2D prefabLinkIcon;
 
@@ -39,6 +49,11 @@ namespace TP.Greenfab
             EditorApplication.hierarchyWindowChanged += HierarchyWindowChanged;
             EditorApplication.projectWindowChanged += ProjectWindowChanged;
             Selection.selectionChanged += OnSelectionChange;
+
+            if (ExtensionMethods.ExtensionMethods.masterVerbose)
+            {
+                Debug.Log("PrefabLinkEdior Initilized.");
+            }
         }
 
         private void OnEnable()
@@ -66,21 +81,21 @@ namespace TP.Greenfab
         private static void UpdateNewlyCreatedPrefabs()
         {
             //Check if new prefab created and update possible instance to connect PrefabLink target
-            if (lastSelectedPrefab != null && lastSelectedGameObject != null)
+            PrefabLink prefab = lastSelectedPrefab.GetComponent<PrefabLink>();
+            PrefabLink prefabInstance = lastSelectedGameObject.GetComponent<PrefabLink>();
+
+            if (prefab != null && prefabInstance != null)
             {
-                PrefabLink prefabParent = lastSelectedPrefab.GetComponent<PrefabLink>();
-                PrefabLink prefabInstance = lastSelectedGameObject.GetComponent<PrefabLink>();
+                prefabInstance.Target = prefab.gameObject;
+                prefab.Target = prefab.gameObject;
+            }
 
-                if (prefabParent != null && prefabInstance != null && prefabInstance.target == null)
-                {
-                    Object foundParrent = PrefabUtility.GetPrefabParent(prefabInstance);
-                    bool match = foundParrent != null && foundParrent.GetInstanceID() == prefabParent.GetInstanceID();
+            lastSelectedPrefab = null;
+            lastSelectedGameObject = null;
 
-                    if (match)
-                    {
-                        prefabInstance.target = prefabParent.gameObject;
-                    }
-                }
+            if (ExtensionMethods.ExtensionMethods.masterVerbose)
+            {
+                Debug.Log("PrefabLink: New prefab (" + prefab.name + ") created from gameObject (" + prefabInstance.gameObject + ").");
             }
         }
 
@@ -101,7 +116,7 @@ namespace TP.Greenfab
                         GameObject prefab = PrefabUtility.GetPrefabParent(prefabLink.gameObject) as GameObject;
                         PrefabUtility.DisconnectPrefabInstance(prefabLink.gameObject);
 
-                        prefabLink.target = prefab;
+                        prefabLink.Target = prefab;
                     }
                 }
             }
@@ -119,7 +134,7 @@ namespace TP.Greenfab
                 projectWindowChangedTime = (float)EditorApplication.timeSinceStartup;
             }
 
-            if (lastSelectedPrefab != null)
+            if (lastSelectedPrefab != null && lastSelectedGameObject != null)
             {
                 UpdateNewlyCreatedPrefabs();
                 
@@ -175,16 +190,14 @@ namespace TP.Greenfab
                 BuildPrefabInstances();
             }
 
-            PrefabLink[] prefabLinksTemp = Array.ConvertAll(targets, item => (PrefabLink)item);
+            UnityEditorInternal.ComponentUtility.MoveComponentUp(FirstPrefabLink.GetComponent<Component>());
 
-            foreach (PrefabLink prefabLink in prefabLinksTemp)
+            foreach (PrefabLink prefabLink in PrefabLinks)
             {
-                UnityEditorInternal.ComponentUtility.MoveComponentUp(prefabLink.GetComponent<Component>());
-
-                //When adding prefab link to a prefab automatically add reference to self.
-                if (!prefabLink.target && prefabLink.gameObject.IsPrefab())
+                //When adding prefabLink component to a prefab automatically add reference to self.
+                if (prefabLink.Target == null && prefabLink.gameObject.IsPrefab())
                 {
-                    prefabLink.target = prefabLink.gameObject;
+                    prefabLink.Target = prefabLink.gameObject;
                 }
             }
         }
@@ -239,17 +252,17 @@ namespace TP.Greenfab
             EditorGUILayout.LabelField("Target", GUILayout.Width(40));
 
             EditorGUI.BeginChangeCheck();
-            GameObject prefabLinkTarget = EditorGUILayout.ObjectField(FirstPrefabLink.target, typeof(GameObject), GUILayout.ExpandWidth(true)) as GameObject;
+            GameObject prefabLinkTarget = EditorGUILayout.ObjectField(FirstPrefabLink.Target, typeof(GameObject), GUILayout.ExpandWidth(true)) as GameObject;
             if (EditorGUI.EndChangeCheck())
             {
                 foreach (PrefabLink prefabLink in PrefabLinks)
                 {
-                    prefabLink.target = prefabLinkTarget;
+                    prefabLink.Target = prefabLinkTarget;
                 }
             }
 
 
-            if (FirstPrefabLink.target == null)
+            if (FirstPrefabLink.Target == null)
             {
                 string createPrefabButtonText = "Create Prefab";
 
@@ -270,8 +283,8 @@ namespace TP.Greenfab
                     {
                          multiPrefabDialogueResult = EditorUtility.DisplayDialogComplex("You've got multiple PrefabsLinks selected",
                             "We are about to try to create " + prefabLinksSelected + " prefabs. How would you like to continue?",
-                            "Skip Propts", //0
-                            "Show All Propts", //1
+                            "Skip Prompts", //0
+                            "Show All Prompts", //1
                             "Cancel"); //2 Close with x is also results in a 2.
 
                         if (multiPrefabDialogueResult != 2)
@@ -331,7 +344,7 @@ namespace TP.Greenfab
 
                                 if (!processCanceled)
                                 {
-                                    selectedPrefabLink.target = PrefabUtility.CreatePrefab(prefabPath, selectedPrefabLink.gameObject);
+                                    selectedPrefabLink.Target = PrefabUtility.CreatePrefab(prefabPath, selectedPrefabLink.gameObject);
                                     TriggerApplyAll();
                                     prefabsCreated++;
                                 }
@@ -350,7 +363,7 @@ namespace TP.Greenfab
 
                         if (absolutePath.Length > 0)
                         {
-                            FirstPrefabLink.target = PrefabUtility.CreatePrefab(AbsolutePathToRelative(absolutePath), FirstPrefabLink.gameObject);
+                            FirstPrefabLink.Target = PrefabUtility.CreatePrefab(AbsolutePathToRelative(absolutePath), FirstPrefabLink.gameObject);
                             TriggerApplyAll();
                         }
                     }
@@ -366,7 +379,7 @@ namespace TP.Greenfab
             bool canApply = true;
             bool canApplyAll = true;
 
-            if (FirstPrefabLink.target == null)
+            if (FirstPrefabLink.Target == null)
             {
                 canRevert = false;
                 canRevertAll = false;
@@ -382,7 +395,7 @@ namespace TP.Greenfab
                         prefabFileSelected = true;
                     }
 
-                    if (prefabLink.target.GetInstanceID() == prefabLink.gameObject.GetInstanceID())
+                    if (prefabLink.Target == prefabLink.gameObject)
                     {
                         canRevert = false;
                     }
@@ -424,7 +437,7 @@ namespace TP.Greenfab
             foreach (PrefabLink prefabLink in PrefabLinks)
             {
                 float startTime = prefabLink.StartTime;
-                bool revertSuccessful = prefabLink.RevertSuccessful;
+                bool revertSuccessful = prefabLink.copySuccessful;
                 float messageDisplayTime = (float)EditorApplication.timeSinceStartup - startTime;
 
                 if (messageDisplayTime < messageDuration && messageDisplayTime > 0)
@@ -480,9 +493,9 @@ namespace TP.Greenfab
                     EditorGUILayout.TextArea("parentDepth: " + FirstPrefabLink.transform.ParentDepth());
                     EditorGUILayout.TextArea("PrefabLink ID: " + FirstPrefabLink.GetInstanceID());
                     EditorGUILayout.TextArea("PrefabLink.gameObject ID: " + FirstPrefabLink.gameObject.GetInstanceID());
-                    if (FirstPrefabLink.target != null)
+                    if (FirstPrefabLink.Target != null)
                     {
-                        EditorGUILayout.TextArea("PrefabLink.target ID: " + FirstPrefabLink.target.GetInstanceID());
+                        EditorGUILayout.TextArea("PrefabLink.target ID: " + FirstPrefabLink.Target.GetInstanceID());
                     }
                 }
                 EditorGUI.indentLevel--;
@@ -502,7 +515,7 @@ namespace TP.Greenfab
 
                     if (!PrefabLink.propogateChanges)
                     {
-                        if (GUILayout.Button("Revert Instances", GUILayout.Width(buttonWidth)))
+                        if (GUILayout.Button("Revert Instances", GUILayout.Width(buttonWidth * 2)))
                         {
                             TriggerRevertAllInstances();
                         }
@@ -576,14 +589,19 @@ namespace TP.Greenfab
                     {
                         Undo.RegisterFullObjectHierarchyUndo(prefabLink, "Prefab Link Revert");
                         prefabLink.StartTime = (float)EditorApplication.timeSinceStartup;
-                        prefabLink.Revert(triggerRevertHierarchy, true);
-                        EditorUtility.SetDirty(prefabLink);
+                        prefabLink.Revert(triggerRevertHierarchy);
+                        if (prefabLink != null)
+                        {
+                            EditorUtility.SetDirty(prefabLink);
+                        }
                     }
                 }
             }
 
             if (triggerRevertAllInstances)
             {
+                BuildPrefabInstances();
+
                 foreach (PrefabLink prefabLink in PrefabLinks)
                 {
                     foreach (GameObject instance in prefabInstances[prefabLink.gameObject])
@@ -600,7 +618,7 @@ namespace TP.Greenfab
                             {
                                 Undo.RegisterFullObjectHierarchyUndo(prefabLinkInstance, "Prefab Link Revert");
                                 prefabLinkInstance.StartTime = (float)EditorApplication.timeSinceStartup;
-                                prefabLinkInstance.Revert(triggerRevertHierarchy, true);
+                                prefabLinkInstance.Revert(triggerRevertHierarchy);
                                 EditorUtility.SetDirty(prefabLinkInstance);
                             }
                         }
@@ -612,35 +630,38 @@ namespace TP.Greenfab
             {
                 foreach (PrefabLink prefabLink in PrefabLinks)
                 {
-                    if (PrefabLink.useUnityEditorApply || prefabLink.target.IsPrefab())
+                    if (PrefabLink.useUnityEditorApply)
                     {
                         //Undo for applying prefabse is broken 
                         //https://issuetracker.unity3d.com/issues/reverting-changes-on-applied-prefab-crashes-unity
 
-                        if (prefabLink.target == null)
+                        if (prefabLink.Target == null)
                         {
                             Debug.LogWarning("Cannot apply changes to a null prefab target.");
                         }
-                        else if (!prefabLink.target.IsPrefab())
+                        else if (!prefabLink.Target.IsPrefab())
                         {
                             Debug.LogWarning("Cannot use UnityEditorApply on a scene object. Only Unity prefab are allowed.");
                         }
                         else
                         {
-                            GameObject newPrefab = PrefabUtility.ReplacePrefab(prefabLink.gameObject, prefabLink.target);
-                            prefabLink.target = newPrefab;
+                            GameObject newPrefab = PrefabUtility.ReplacePrefab(prefabLink.gameObject, prefabLink.Target);
+                            prefabLink.Target = newPrefab;
                         }
                     }
                     else
                     {
-                        if (prefabLink.target != null)
+                        if (prefabLink.Target != null)
                         {
-                            Undo.RegisterFullObjectHierarchyUndo(prefabLink.target, "Prefab Link Apply");
+                            Undo.RegisterFullObjectHierarchyUndo(prefabLink.Target, "Prefab Link Apply");
                         }
 
-                        prefabLink.Apply(triggerRevertHierarchy);
+                        prefabLink.Apply(triggerApplyAll);
 
-                        EditorUtility.SetDirty(prefabLink.target);
+                        if (prefabLink.Target != null)
+                        {
+                            EditorUtility.SetDirty(prefabLink.Target);
+                        }
                     }
                 }
             }
@@ -656,20 +677,14 @@ namespace TP.Greenfab
 
         private void MovePrefabLinksToTop()
         {
-            PrefabLink[] prefabLinksTemp = Array.ConvertAll(targets, item => (PrefabLink)item);
-
-            foreach (PrefabLink prefabLink in prefabLinksTemp)
+            foreach (PrefabLink prefabLink in PrefabLinks)
             {
                 UnityEditorInternal.ComponentUtility.MoveComponentUp(prefabLink);
             }
         }
 
         private static void HandleHierarchyWindowItemOnGUI(int instanceID, Rect selectionRect)
-        {
-            Color prefabLinkColor = new Color32(0, 125, 0, 255);
-            Color background = Color.blue;
-            Color backgroundColor = new Color32(194, 194, 194, 255);
-
+        {            
             UnityEngine.Object obj = EditorUtility.InstanceIDToObject(instanceID);
 
             if (obj != null)
@@ -682,6 +697,8 @@ namespace TP.Greenfab
                     if (prefabLink != null)
                     {
                         FontStyle prefabLinkFontStyle = FontStyle.Normal;
+                        Color prefabLinkColor = textEditorBlack;
+                        Color backgroundColor = editorGray;
                         
                         float timeSinceStartup = (float)EditorApplication.timeSinceStartup;
                         if (timeSinceStartup - prefabLink.updateDirtyStartTime > 1 / PrefabLink.dirtyChecksPerSecond)
@@ -690,20 +707,51 @@ namespace TP.Greenfab
                             prefabLink.updateDirtyStartTime = timeSinceStartup;
                         }
 
-                        if (prefabLink.Dirty)
+                        bool selected = Selection.instanceIDs.Contains(instanceID);
+                        bool disabled = !gameObject.activeInHierarchy;
+                        bool noTarget = prefabLink.target == null;
+                        bool dirty = prefabLink.Dirty;
+                        
+                        if (dirty || noTarget)
                         {
                             prefabLinkFontStyle = FontStyle.Bold;
                         }
 
-                        if (Selection.instanceIDs.Contains(instanceID))
+                        if (selected)
                         {
-                            prefabLinkColor = new Color32(100, 200, 100, 255);
-                            backgroundColor = new Color(.24f, .48f, .90f);
+                            backgroundColor = selectedBackgroundBlue;
                         }
 
-                        if (!gameObject.activeInHierarchy)
+                        if (noTarget)
+                        {   
+                            if (selected)
+                            {
+                                prefabLinkColor = textNoTargetSelected;
+                            }
+                            else if (disabled)
+                            {
+                                prefabLinkColor = textNoTargetDisabled;
+                            }
+                            else 
+                            {
+                                prefabLinkColor = textNoTargetDefault;
+                            }
+                        }
+                        else
                         {
-                            prefabLinkColor = new Color32(100, 150, 100, 255);
+                            if (selected)
+                            {
+                                prefabLinkColor = textNormalSelected;
+                            }
+                            else if (disabled)
+                            {
+                                prefabLinkColor = textNormalDisabled;
+                            }
+                            else 
+                            {
+                                prefabLinkColor = textNormalDefault;
+                            }
+
                         }
 
                         Rect offsetRect = new Rect(selectionRect.position + new Vector2(0, 2), selectionRect.size);
