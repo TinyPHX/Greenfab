@@ -32,3 +32,7 @@ sysinfo.txt
 # Builds
 *.apk
 *.unitypackage
+
+# ignore tag
+*_ignore*.*
+/_ignore*/*

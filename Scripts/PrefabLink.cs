@@ -218,6 +218,12 @@ namespace TP.Greenfab
             {
                 #if UNITY_EDITOR
                 try {
+                    if (gameObject.IsPrefab())
+                    {
+                        Debug.Log("If you get a warning about 'Setting the parent of a transform..'" +
+                            " it can be ignored.");
+                    }
+
                     Undo.DestroyObjectImmediate(gameObject); //Thows unity warning but works
                     
                     //DestroyImmediate(gameObject, true); //Can't undo

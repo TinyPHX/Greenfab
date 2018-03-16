@@ -82,7 +82,16 @@ namespace TP.Greenfab
         {
             //Check if new prefab created and update possible instance to connect PrefabLink target
             PrefabLink prefab = lastSelectedPrefab.GetComponent<PrefabLink>();
-            PrefabLink prefabInstance = lastSelectedGameObject.GetComponent<PrefabLink>();
+            PrefabLink prefabInstance = null;
+
+            if (lastSelectedGameObject != null)
+            {
+                prefabInstance = lastSelectedGameObject.GetComponent<PrefabLink>();
+            }
+            else
+            {
+                prefabInstance = GetPrefabInstance(prefab);
+            }
 
             if (prefab != null && prefabInstance != null)
             {
@@ -97,6 +106,20 @@ namespace TP.Greenfab
             {
                 Debug.Log("PrefabLink: New prefab (" + prefab.name + ") created from gameObject (" + prefabInstance.gameObject + ").");
             }
+        }
+
+        private static PrefabLink GetPrefabInstance(PrefabLink prefabLink)
+        {
+            PrefabLink[] allPrefabLinksInScene = FindObjectsOfType<PrefabLink>();
+            foreach (PrefabLink prefabLinkInSceen in allPrefabLinksInScene)
+            {
+                if (prefabLink.gameObject == PrefabUtility.GetPrefabParent(prefabLinkInSceen.gameObject))
+                {
+                    return prefabLinkInSceen;
+                }
+            }
+
+            return null;
         }
 
         private static void HierarchyWindowChanged()
@@ -134,7 +157,7 @@ namespace TP.Greenfab
                 projectWindowChangedTime = (float)EditorApplication.timeSinceStartup;
             }
 
-            if (lastSelectedPrefab != null && lastSelectedGameObject != null)
+            if (lastSelectedPrefab != null/* && lastSelectedGameObject != null*/)
             {
                 UpdateNewlyCreatedPrefabs();
                 
