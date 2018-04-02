@@ -5,6 +5,9 @@ using UnityEngine;
 using System.Reflection;
 using System;
 using System.Linq;
+using ValueEqualsReport = TP.ExtensionMethods.ExtensionMethods.ValueEqualsReport;
+using ValueEqualsReportMatch = TP.ExtensionMethods.ExtensionMethods.ValueEqualsReportMatch;
+using ValueEqualsReportMatchType = TP.ExtensionMethods.ExtensionMethods.ValueEqualsReportMatchType;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -20,6 +23,7 @@ namespace TP.Greenfab
 
         private bool revertSuccessful;
         private bool dirty;
+        private ValueEqualsReport dirtyReport = new ValueEqualsReport();
 
         //Used by editor
         private float revertStartTime;
@@ -35,6 +39,7 @@ namespace TP.Greenfab
         public static bool advancedOptions = false;
         public static bool prefabOnlyOptions = false;
         public static bool debugInfo = false;
+        public static bool showDirtyObjects = false;
         public static bool propogateChanges = false;
 
         public override bool Equals(object other)
@@ -64,13 +69,31 @@ namespace TP.Greenfab
         {
             Dirty = false;
 
+            int addLimit = 0;
+            if (dirtyReport != null)
+            {
+                addLimit = dirtyReport.AddLimit;
+            }
+
+            dirtyReport = new ValueEqualsReport();
+            dirtyReport.AddLimit = addLimit;
+            dirtyReport.IgnoreComponents = new Type[] { typeof(Transform), typeof(PrefabLink) };
+            dirtyReport.AddNonMatch(gameObject);
+            dirtyReport.AddNonMatch(target);
+            dirtyReport.AddMatch(gameObject, target, ValueEqualsReportMatchType.TARGET_EQUAL);
+
             if (gameObject != null && Target != null)
             {
-                Dirty = !gameObject.ValueEquals(Target);
+                Dirty = !gameObject.ValueEquals(Target, dirtyReport);
             }
+
+            //foreach (PrefabLink prefabLink in GetComponentsInChildren<PrefabLink>())
+            //{
+            //    dirtyReport.AddMatch(prefabLink.gameObject, prefabLink.target, ValueEqualsReportMatchType.TARGET_EQUAL);
+            //}
         }
         
-        public bool Revert(bool revertChildren=true, bool ignoreTopTransform=true, bool ignorePrefabLink=false)
+        public bool Revert(bool revertChildren=true, bool ignoreTopTransform=true, bool ignorePrefabLink=true)
         {
             GameObject from = Target;
             GameObject to = gameObject;
@@ -88,7 +111,7 @@ namespace TP.Greenfab
             return true;
         }
 
-        public void Revert(GameObject from, GameObject to, bool ignoreTopTransform=true, bool ignorePrefabLink=false)
+        public void Revert(GameObject from, GameObject to, bool ignoreTopTransform=true, bool ignorePrefabLink=true)
         {
             Copy(from, to, ignoreTopTransform, ignorePrefabLink);
             revertSuccessful = true;
@@ -132,7 +155,7 @@ namespace TP.Greenfab
             return Copy(to, from, ignoreTopTransform, ignorePrefabLink);
         }
 
-        public GameObject Copy(GameObject from, GameObject to, bool ignoreTopTransform = true, bool ignorePrefabLink = true)
+        public GameObject Copy(GameObject from, GameObject to, bool ignoreTopTransform=true, bool ignorePrefabLink=true)
         {
             GameObject updatedTo = to;
 
@@ -152,26 +175,45 @@ namespace TP.Greenfab
                 //}
                 //else
                 //{
-                    RemoveComponentsAndChildren(to, ignoreTopTransform, ignorePrefabLink);
-                    CopyComponentsAndChildren(from, to, ignoreTopTransform, ignorePrefabLink);
+                //    RemoveComponentsAndChildren(to, ignoreTopTransform, ignorePrefabLink);
+                //    CopyComponentsAndChildren(from, to, ignoreTopTransform, ignorePrefabLink);
                 //}
+                
+                UpdateDirty();
+
+                RemoveUnmatchedComponentsAndChildren(to, ignoreTopTransform, true);
+                CopyComponentsAndChildren(from, to, ignoreTopTransform, true);
+                
+                //Repair local object references.
+
+                UpdateDirty();
             }
 
             return updatedTo;
         }
 
-        public void RemoveComponentsAndChildren(GameObject from, bool ignoreTopTransform=true, bool ignorePrefabLink=true)
+        public void RemoveUnmatchedComponentsAndChildren(GameObject from, bool ignoreTopTransform=true, bool ignorePrefabLink=true)
         {
             if (from == null) { from = gameObject; }
 
-            //Remove children
+            //Remove children that dont have a matching gameObject in the target
             for (int i = from.transform.childCount - 1; i >= 0; i--)
             {
-                RemoveGameObject(from.transform.GetChild(i).gameObject);
+                GameObject child = from.transform.GetChild(i).gameObject;
+                if (!dirtyReport.Matched(child))
+                {
+                    RemoveGameObject(child);
+                }
+                else
+                {
+                    RemoveUnmatchedComponentsAndChildren(child, ignoreTopTransform, ignorePrefabLink);
+                }
             }
 
-            //Remove components
-            List<Component> componentsToRemove = from.GetComponents<Component>().ToList();
+            //Remove components that dont have a matching component in the target
+            List<Component> componentsToRemove = from.GetComponents<Component>()
+                .Where((item) => !dirtyReport.Matched(item))
+                .ToList();
 
             while (componentsToRemove.Count > 0)
             {
@@ -252,53 +294,92 @@ namespace TP.Greenfab
 
         public void CopyComponentsAndChildren(GameObject from, GameObject to, bool ignoreTransform=true, bool ignorePrefabLink=true)
         {
+            bool copyEvenWhenEqual = true;
+
             if (from != null)
             {
-                List<Component> componentsToAdd = from.GetComponents<Component>().ToList();
-
-                //Copy prefab components
-                while (componentsToAdd.Count > 0)
-                {
-                    CopyComponentAndRequiredComponents(componentsToAdd[0], componentsToAdd, to, ignoreTransform, ignorePrefabLink);
-                }
-
                 //Copy prefab children
                 foreach (Transform child in from.transform)
                 {
-                    Transform newChild = Instantiate(child, to.transform, false);
-                    newChild.name = child.name;
+                    if (!dirtyReport.Matched(child.gameObject))
+                    {
+                        Transform newChild = Instantiate(child, to.transform, false);
+                        newChild.name = child.name;
 
-                    #if UNITY_EDITOR
-                    Undo.RegisterCreatedObjectUndo(newChild.gameObject, "Prefab Link: Copy child GameObject");
-                    #endif
+                        #if UNITY_EDITOR
+                        Undo.RegisterCreatedObjectUndo(newChild.gameObject, "Prefab Link: Copy child GameObject");
+                        #endif
+                    }
+                    else
+                    {   
+                        GameObject fromChild = child.gameObject;
+                        GameObject toChild = dirtyReport.GetMatch(fromChild) as GameObject;
+                        CopyComponentsAndChildren(fromChild, toChild, ignoreTransform, ignorePrefabLink);
+                    }
                 }
+                
+                List<Component> needsAdding = new List<Component> { };
+                List<Component> needsCopying = new List<Component> { };
+                foreach (Component component in from.GetComponents<Component>())
+                {
+                    bool ignore = false;
+                    //Not using ignoreTransform and always ignoring no matter what. 
+                    if ( /*ignoreTransform &&*/ component.GetType() == typeof(Transform) || 
+                        ignorePrefabLink && component.GetType() == typeof(PrefabLink))
+                    {
+                        ignore = true;
+                    }
+
+                    if (!ignore)
+                    {
+                        if (!dirtyReport.Matched(component))
+                        {
+                            needsAdding.Add(component);
+                        }
+                        else
+                        {
+                            ValueEqualsReportMatch match = dirtyReport.GetMatchDetails(component);
+
+                            if (match.Type == ValueEqualsReportMatchType.NAMES_EQUAL || copyEvenWhenEqual)
+                            {
+                                Component toComponent = match.Match as Component;
+                                toComponent.CopyComponent(component);
+                            }
+                        }
+                    }
+                }
+
+                while (needsAdding.Count > 0)
+                {
+                    CopyComponentFromList(needsAdding[0], needsAdding, to, ignoreTransform, ignorePrefabLink);
+                }
+
+                //List<Component> componentsToAdd = from.GetComponents<Component>()
+                //    .Where((item) => !dirtyReport.Matched(item))
+                //    .ToList();
+
+                ////Copy prefab components
+                //while (componentsToAdd.Count > 0)
+                //{
+                //    CopyComponentAndRequiredComponents(componentsToAdd[0], componentsToAdd, to, ignoreTransform, ignorePrefabLink);
+                //}
 
                 if (ExtensionMethods.ExtensionMethods.includeNames)
                 {
-                    to.name = from.name;
+                    if (to != null && from != null)
+                    {
+                        to.name = from.name;
+                    }
                 }
             }
         }
 
-        public void CopyComponentAndRequiredComponents(Component component, List<Component> componentsToAdd, GameObject to, bool ignoreTransform=true, bool ignorePrefabLink=true)
+        public void CopyComponentFromList(Component component, List<Component> componentsToAdd, GameObject to, 
+            bool copyRequiredComponents=true, bool ignoreTransform=true, bool ignorePrefabLink=false)
         {
             componentsToAdd.Remove(component);
-
-            bool ignore = false;
-
-            //Not using ignoreTransform and always ignoring no matter what. 
-            if ( /*ignoreTransform &&*/ component.GetType() == typeof(Transform) || 
-                ignorePrefabLink && component.GetType() == typeof(PrefabLink))
-            {
-                ignore = true;
-            }
-
-            if (ignorePrefabLink && component.GetType() == typeof(PrefabLink))
-            {
-                ignore = true;
-            }
-
-            if (!ignore)
+            
+            if (copyRequiredComponents)
             {
                 List<Type> requireComponentTypes = component.RequiredComponents();
 
@@ -307,12 +388,17 @@ namespace TP.Greenfab
                     if (to.GetComponent(type) == null)
                     {
                         Component requiredComponent = componentsToAdd.Find((item) => item.GetType() == type);
-                        CopyComponentAndRequiredComponents(requiredComponent, componentsToAdd, to, ignoreTransform);
+                        CopyComponentFromList(requiredComponent, componentsToAdd, to, ignoreTransform);
                     }
                 }
-
-                CopyComponent(component, to);
             }
+
+            to.CopyComponent(component);
+        }
+
+        private Component CopyComponent(Component component, Component to)
+        {
+            return to.CopyComponent(component);
         }
 
         private Component CopyComponent(Component component, GameObject to)
@@ -397,6 +483,11 @@ namespace TP.Greenfab
             {
                 target = value;
             }
+        }
+
+        public ValueEqualsReport DirtyReport
+        {
+            get { return dirtyReport; }
         }
     }
 }

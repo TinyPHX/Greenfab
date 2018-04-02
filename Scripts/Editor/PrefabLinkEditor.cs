@@ -6,6 +6,8 @@ using System.Linq;
 using System.Collections.Generic;
 using Object = UnityEngine.Object;
 using System.IO;
+using ValueEqualsReportMatch = TP.ExtensionMethods.ExtensionMethods.ValueEqualsReportMatch;
+using ValueEqualsReportMatchType = TP.ExtensionMethods.ExtensionMethods.ValueEqualsReportMatchType;
 
 namespace TP.Greenfab
 {
@@ -476,7 +478,7 @@ namespace TP.Greenfab
                         messageType = MessageType.Info;
                     }
 
-                    EditorGUILayout.HelpBox(message, messageType);
+                    //EditorGUILayout.HelpBox(message, messageType); //Dont know why this breaks. Balls. 
                 }
 
             }
@@ -488,37 +490,153 @@ namespace TP.Greenfab
                 PrefabLink.useUnityEditorRevert = EditorGUILayout.Toggle("Use Unity Revert", PrefabLink.useUnityEditorRevert);
                 PrefabLink.useUnityEditorApply = EditorGUILayout.Toggle("Use Unity Apply", PrefabLink.useUnityEditorApply);
                 ExtensionMethods.ExtensionMethods.masterVerbose = EditorGUILayout.Toggle("Verbose", ExtensionMethods.ExtensionMethods.masterVerbose);
-                GUI.enabled = false;
                 EditorGUILayout.Toggle("Is Dirty", firstPrefabLink.Dirty);
-                GUI.enabled = true;
-                PrefabLink.dirtyChecksPerSecond = EditorGUILayout.Slider("Dirty Checks/Sec", PrefabLink.dirtyChecksPerSecond, 0, 10);
-                if (PrefabLink.dirtyChecksPerSecond == 0)
+                //PrefabLink.dirtyChecksPerSecond = EditorGUILayout.Slider("Dirty Checks/Sec", PrefabLink.dirtyChecksPerSecond, 0, 10);
+                //if (PrefabLink.dirtyChecksPerSecond == 0)
+                //{
+                //    if (GUILayout.Button(smallButtons ? "Check" : "Check Dirty", GUILayout.Width(buttonWidth)))
+                //    {
+                //        foreach (PrefabLink prefabLink in PrefabLinks)
+                //        {
+                //            prefabLink.UpdateDirty();
+                //        }
+                //        EditorApplication.RepaintHierarchyWindow();
+                //    }
+                //}
+
+                EditorGUI.indentLevel++;
+                EditorGUILayout.BeginHorizontal();
+                Rect reportFoldoutRect = EditorGUILayout.GetControlRect(GUILayout.Width(buttonWidth));
+                PrefabLink.showDirtyObjects = EditorGUI.Foldout(reportFoldoutRect, PrefabLink.showDirtyObjects, "Dirty Report");
+                PrefabLink.dirtyChecksPerSecond = EditorGUILayout.Slider(PrefabLink.dirtyChecksPerSecond, 0, 10, GUILayout.Width(buttonWidth));
+                EditorGUILayout.LabelField(smallButtons ? "Check(s)" : "Check(s)/Second", GUILayout.Width(buttonWidth));
+                if (GUILayout.Button(smallButtons ? "Refresh" : "Refresh", GUILayout.Width(buttonWidth)))
                 {
-                    if (GUILayout.Button(smallButtons ? "Check" : "Check Dirty", GUILayout.Width(buttonWidth)))
+                    PrefabLink.showDirtyObjects = true;
+                    foreach (PrefabLink prefabLink in PrefabLinks)
                     {
-                        foreach (PrefabLink prefabLink in PrefabLinks)
+                        prefabLink.UpdateDirty();
+                    }
+                    EditorApplication.RepaintHierarchyWindow();
+                }
+                EditorGUILayout.EndHorizontal();
+                if (PrefabLink.showDirtyObjects)
+                {
+                    if (firstPrefabLink.DirtyReport.Length == 0)
+                    {
+                        EditorGUILayout.LabelField("NO REPORT FOUND");
+                    }
+                    else
+                    {
+                        int currentAddLimit = FirstPrefabLink.DirtyReport.AddLimit;
+                        FirstPrefabLink.DirtyReport.AddLimit = EditorGUILayout.IntSlider("History", FirstPrefabLink.DirtyReport.AddLimit, 0, 100);
+                        if (currentAddLimit != FirstPrefabLink.DirtyReport.AddLimit)
                         {
-                            prefabLink.UpdateDirty();
+                            FirstPrefabLink.UpdateDirty();
                         }
-                        EditorApplication.RepaintHierarchyWindow();
+                        float[] columnWidth = { buttonWidth * 1.5f, buttonWidth * 1.5f, buttonWidth };
+                        EditorGUILayout.BeginHorizontal();
+                        EditorGUILayout.LabelField("OBJECT", EditorStyles.boldLabel, GUILayout.Width(columnWidth[0]));
+                        EditorGUILayout.LabelField("MATCH", EditorStyles.boldLabel, GUILayout.Width(columnWidth[1]));
+                        EditorGUILayout.LabelField("TYPE", EditorStyles.boldLabel, GUILayout.Width(columnWidth[2]));
+                        EditorGUILayout.EndHorizontal();
+                        Color defaultGuiColor = GUI.color;
+                        foreach (object objectInReport in firstPrefabLink.DirtyReport.BadMatches.Union(firstPrefabLink.DirtyReport.GoodMatches))
+                        //foreach (object objectInReport in firstPrefabLink.DirtyReport.AllMatches)
+                        {
+                            ValueEqualsReportMatch matchDetails = firstPrefabLink.DirtyReport.GetMatchDetails(objectInReport);
+                            
+                            bool show = true;
+                            Color matchColor = defaultGuiColor;
+
+                            string type = "";
+                            switch (matchDetails.Type)
+                            {
+                                case ValueEqualsReportMatchType.NONE:
+                                    matchColor = new Color(1,.3f,.3f); //light red
+                                    type = "None";
+                                    break;
+                                case ValueEqualsReportMatchType.NAMES_EQUAL:
+                                    matchColor = new Color(1,.6f,.3f); //light orange
+                                    type = "Names equal";
+                                    break;
+                                case ValueEqualsReportMatchType.TARGET_EQUAL:
+                                    matchColor = new Color(1,1,0); //yellow
+                                    type = "Target equals";
+                                    break;
+                                case ValueEqualsReportMatchType.VALUE_EQUAL:
+                                    matchColor = Color.green;
+                                    type = "Deep equal";
+                                    break;
+                                case ValueEqualsReportMatchType.EQUAL:
+                                    matchColor = Color.green;
+                                    type = "Equal";
+                                    break;
+                                case ValueEqualsReportMatchType.REFERENCE_EQUAL:
+                                    matchColor = Color.green;
+                                    type = "Referecne equal";
+                                    break;
+                            }
+                            
+                            if (show)
+                            {
+                                EditorGUILayout.BeginHorizontal();
+
+                                Object unityObjectInReport = objectInReport as Object;
+                                if (unityObjectInReport != null)
+                                {
+                                    EditorGUILayout.ObjectField(unityObjectInReport as Object, typeof(Object), false, GUILayout.Width(columnWidth[0]));
+                                }
+                                else
+                                {
+                                    EditorGUILayout.TextField(objectInReport.ToString(), GUILayout.Width(columnWidth[0] - 18));
+                                    EditorGUILayout.LabelField("", GUILayout.Width(14));
+                                }
+                                
+                                GUI.color = matchColor;
+                                if (matchDetails.Match is Object || matchDetails.Match == null)
+                                {
+                                    EditorGUILayout.ObjectField(matchDetails.Match as Object, typeof(Object), false, GUILayout.Width(columnWidth[1]));
+                                }
+                                else
+                                {
+                                    EditorGUILayout.TextField(matchDetails.Match.ToString(), GUILayout.Width(columnWidth[0] - 18));
+                                    EditorGUILayout.LabelField("", GUILayout.Width(14));
+                                }
+                                GUI.color = defaultGuiColor;
+
+                                EditorGUILayout.SelectableLabel(type, GUILayout.Width(columnWidth[2]), GUILayout.Height(EditorGUIUtility.singleLineHeight));
+                                EditorGUILayout.EndHorizontal();
+                                List<string> notes = firstPrefabLink.DirtyReport.GetNotes(objectInReport);
+                                if (notes != null)
+                                {
+                                    EditorGUI.indentLevel++;
+                                    foreach (string note in notes)
+                                    {
+                                        EditorGUILayout.SelectableLabel(note, GUILayout.Height(EditorGUIUtility.singleLineHeight));
+                                    }
+                                    EditorGUI.indentLevel--;
+                                }
+                            }
+                        }
                     }
                 }
+                EditorGUI.indentLevel--;
 
                 EditorGUI.indentLevel++;
                 PrefabLink.debugInfo = EditorGUILayout.Foldout(PrefabLink.debugInfo, "Debug Info");
                 if (PrefabLink.debugInfo)
                 {
-                    EditorGUILayout.TextArea("dirty: " + FirstPrefabLink.Dirty);
-                    EditorGUILayout.TextArea("isPrefab: " + FirstPrefabLink.gameObject.IsPrefab());
-                    EditorGUILayout.TextArea("hierarchyCount: " + FirstPrefabLink.transform.hierarchyCount);
-                    EditorGUILayout.TextArea("hierarchyCapacity: " + FirstPrefabLink.transform.hierarchyCapacity);
-                    EditorGUILayout.TextArea("childCount: " + FirstPrefabLink.transform.childCount);
-                    EditorGUILayout.TextArea("parentDepth: " + FirstPrefabLink.transform.ParentDepth());
-                    EditorGUILayout.TextArea("PrefabLink ID: " + FirstPrefabLink.GetInstanceID());
-                    EditorGUILayout.TextArea("PrefabLink.gameObject ID: " + FirstPrefabLink.gameObject.GetInstanceID());
+                    EditorGUILayout.SelectableLabel("isPrefab: " + FirstPrefabLink.gameObject.IsPrefab(), GUILayout.ExpandWidth(true), GUILayout.Height(EditorGUIUtility.singleLineHeight));
+                    EditorGUILayout.SelectableLabel("hierarchyCount: " + FirstPrefabLink.transform.hierarchyCount, GUILayout.ExpandWidth(true), GUILayout.Height(EditorGUIUtility.singleLineHeight));
+                    EditorGUILayout.SelectableLabel("hierarchyCapacity: " + FirstPrefabLink.transform.hierarchyCapacity, GUILayout.ExpandWidth(true), GUILayout.Height(EditorGUIUtility.singleLineHeight));
+                    EditorGUILayout.SelectableLabel("childCount: " + FirstPrefabLink.transform.childCount, GUILayout.ExpandWidth(true), GUILayout.Height(EditorGUIUtility.singleLineHeight));
+                    EditorGUILayout.SelectableLabel("parentDepth: " + FirstPrefabLink.transform.ParentDepth(), GUILayout.ExpandWidth(true), GUILayout.Height(EditorGUIUtility.singleLineHeight));
+                    EditorGUILayout.SelectableLabel("PrefabLink ID: " + FirstPrefabLink.GetInstanceID(), GUILayout.ExpandWidth(true), GUILayout.Height(EditorGUIUtility.singleLineHeight));
+                    EditorGUILayout.SelectableLabel("PrefabLink.gameObject ID: " + FirstPrefabLink.gameObject.GetInstanceID(), GUILayout.ExpandWidth(true), GUILayout.Height(EditorGUIUtility.singleLineHeight));                    
                     if (FirstPrefabLink.Target != null)
                     {
-                        EditorGUILayout.TextArea("PrefabLink.target ID: " + FirstPrefabLink.Target.GetInstanceID());
+                        EditorGUILayout.SelectableLabel("PrefabLink.target ID: " + FirstPrefabLink.Target.GetInstanceID(), GUILayout.ExpandWidth(true), GUILayout.Height(EditorGUIUtility.singleLineHeight));
                     }
                 }
                 EditorGUI.indentLevel--;
