@@ -88,7 +88,7 @@ namespace TP.Greenfab
             {
                 prefabInstance = lastSelectedGameObject.GetComponent<PrefabLink>();
             }
-            else
+            else if (prefab != null)
             {
                 prefabInstance = GetPrefabInstance(prefab);
             }
@@ -485,6 +485,8 @@ namespace TP.Greenfab
             if (PrefabLink.advancedOptions)
             {
                 PrefabLink.ChangeNames = EditorGUILayout.Toggle("Change Names", PrefabLink.ChangeNames);
+                PrefabLink.ignoreTopTransform = EditorGUILayout.Toggle("Ignore Top Transform", PrefabLink.ignoreTopTransform);
+                PrefabLink.ignoreAllTransforms = EditorGUILayout.Toggle("Ignore All Transforms", PrefabLink.ignoreAllTransforms);
                 PrefabLink.useUnityEditorRevert = EditorGUILayout.Toggle("Use Unity Revert", PrefabLink.useUnityEditorRevert);
                 PrefabLink.useUnityEditorApply = EditorGUILayout.Toggle("Use Unity Apply", PrefabLink.useUnityEditorApply);
                 ExtensionMethods.ExtensionMethods.masterVerbose = EditorGUILayout.Toggle("Verbose", ExtensionMethods.ExtensionMethods.masterVerbose);
@@ -612,7 +614,7 @@ namespace TP.Greenfab
                     {
                         Undo.RegisterFullObjectHierarchyUndo(prefabLink, "Prefab Link Revert");
                         prefabLink.StartTime = (float)EditorApplication.timeSinceStartup;
-                        prefabLink.Revert(triggerRevertHierarchy);
+                        prefabLink.Revert(triggerRevertHierarchy, PrefabLink.ignoreTopTransform);
                         if (prefabLink != null)
                         {
                             EditorUtility.SetDirty(prefabLink);
@@ -641,7 +643,7 @@ namespace TP.Greenfab
                             {
                                 Undo.RegisterFullObjectHierarchyUndo(prefabLinkInstance, "Prefab Link Revert");
                                 prefabLinkInstance.StartTime = (float)EditorApplication.timeSinceStartup;
-                                prefabLinkInstance.Revert(triggerRevertHierarchy);
+                                prefabLinkInstance.Revert(triggerRevertHierarchy, PrefabLink.ignoreTopTransform);
                                 EditorUtility.SetDirty(prefabLinkInstance);
                             }
                         }
@@ -679,7 +681,7 @@ namespace TP.Greenfab
                             Undo.RegisterFullObjectHierarchyUndo(prefabLink.Target, "Prefab Link Apply");
                         }
 
-                        prefabLink.Apply(triggerApplyAll);
+                        prefabLink.Apply(triggerApplyAll, PrefabLink.ignoreTopTransform);
 
                         if (prefabLink.Target != null)
                         {

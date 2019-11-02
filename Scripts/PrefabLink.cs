@@ -36,6 +36,8 @@ namespace TP.Greenfab
         public static bool prefabOnlyOptions = false;
         public static bool debugInfo = false;
         public static bool propogateChanges = false;
+        public static bool ignoreTopTransform = true;
+        public static bool ignoreAllTransforms = false;
 
         public override bool Equals(object other)
         {
@@ -81,14 +83,14 @@ namespace TP.Greenfab
             {
                 foreach (PrefabLink directChildprefabLink in DirectChildPrefabLinks(to))
                 {
-                    directChildprefabLink.Revert(revertChildren, false, ignorePrefabLink);
+                    directChildprefabLink.Revert(revertChildren, ignoreAllTransforms, ignorePrefabLink);
                 }
             }
 
             return true;
         }
 
-        public void Revert(GameObject from, GameObject to, bool ignoreTopTransform=true, bool ignorePrefabLink=false)
+        public void Revert(GameObject from, GameObject to, bool ignoreTopTransform=true, bool ignorePrefabLink=true)
         {
             Copy(from, to, ignoreTopTransform, ignorePrefabLink);
             revertSuccessful = true;
@@ -145,16 +147,18 @@ namespace TP.Greenfab
                 //        unityEditor = true; //Cant modify prefab parrents so have to use unity editor.
                 //    }
                 //#endif
-
                 //if (unityEditor)
                 //{
                 //    updatedTo = PrefabUtility.ReplacePrefab(from, to);
                 //}
                 //else
                 //{
-                    RemoveComponentsAndChildren(to, ignoreTopTransform, ignorePrefabLink);
-                    CopyComponentsAndChildren(from, to, ignoreTopTransform, ignorePrefabLink);
+                //    RemoveComponentsAndChildren(to, ignoreTopTransform, ignorePrefabLink);
+                //    CopyComponentsAndChildren(from, to, ignoreTopTransform, ignorePrefabLink);
                 //}
+                
+                RemoveComponentsAndChildren(to, ignoreTopTransform, false);
+                CopyComponentsAndChildren(from, to, ignoreTopTransform, false);
             }
 
             return updatedTo;
@@ -176,9 +180,11 @@ namespace TP.Greenfab
             while (componentsToRemove.Count > 0)
             {
                 Component component = componentsToRemove[0];
-
-                if (ignoreTopTransform && component.GetType() == typeof(Transform) ||
-                    ignorePrefabLink && component.GetType() == typeof(PrefabLink))
+                
+                bool ignore = ignoreTopTransform && component is Transform || 
+                              ignorePrefabLink && component.GetType() == typeof(PrefabLink);
+                
+                if (ignore)
                 {
                     componentsToRemove.Remove(component);
                 }
@@ -194,7 +200,7 @@ namespace TP.Greenfab
 
         public void RemoveComponentAndRequiredComponents(Component component, List<Component> removed)
         {
-            //TODO check for cicular dependancies
+            //TODO check for circular dependencies where component1 requires component2 and component2 requires component1.
 
             removed.Add(component);
             
@@ -284,30 +290,26 @@ namespace TP.Greenfab
         {
             componentsToAdd.Remove(component);
 
-            bool ignore = false;
-
-            //Not using ignoreTransform and always ignoring no matter what. 
-            if ( /*ignoreTransform &&*/ component.GetType() == typeof(Transform) || 
-                ignorePrefabLink && component.GetType() == typeof(PrefabLink))
-            {
-                ignore = true;
-            }
-
-            if (ignorePrefabLink && component.GetType() == typeof(PrefabLink))
-            {
-                ignore = true;
-            }
+            bool ignore = ignoreTransform && component is Transform || 
+                          ignorePrefabLink && component.GetType() == typeof(PrefabLink);
 
             if (!ignore)
             {
-                List<Type> requireComponentTypes = component.RequiredComponents();
-
-                foreach (Type type in requireComponentTypes)
+                List<Type> requiredComponentTypes = component.RequiredComponents();
+                    
+                foreach (Type requiredType in requiredComponentTypes)
                 {
-                    if (to.GetComponent(type) == null)
+                    if (to.GetComponent(requiredType) == null)
                     {
-                        Component requiredComponent = componentsToAdd.Find((item) => item.GetType() == type);
-                        CopyComponentAndRequiredComponents(requiredComponent, componentsToAdd, to, ignoreTransform);
+                        Component requiredComponent = componentsToAdd
+                            .Find((item) => 
+                                item.GetType() == requiredType || 
+                                item.GetType().IsSubclassOf(requiredType));
+
+                        if (requiredComponent != null)
+                        {
+                            CopyComponentAndRequiredComponents(requiredComponent, componentsToAdd, to, ignoreTransform);
+                        }
                     }
                 }
 
